@@ -29,14 +29,12 @@
     {
         _appKey = @"45c6af3c98409b18a84451215d0bdd6e";
         _apiURL = @"https://app.netease.im/api";
-        _cerName= @"ENTERPRISE";
+        _apnsCername = @"ENTERPRISE";
+        _pkCername = @"DEMO_PUSH_KIT";
+        
+        _redPacketConfig = [[NTESRedPacketConfig alloc] init];        
     }
     return self;
-}
-
-- (NSString *)appKey
-{
-    return _appKey;
 }
 
 - (NSString *)apiURL
@@ -45,10 +43,31 @@
     return _apiURL;
 }
 
-- (NSString *)cerName
+- (void)registerConfig:(NSDictionary *)config
 {
-    return _cerName;
+    if (config[@"red_packet_online"])
+    {
+        _redPacketConfig.useOnlineEnv = [config[@"red_packet_online"] boolValue];
+    }
 }
 
+
+@end
+
+
+
+@implementation NTESRedPacketConfig
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self)
+    {
+        _useOnlineEnv = YES;
+        _aliPaySchemeUrl = @"alipay052969";
+        _weChatSchemeUrl = @"wx2a5538052969956e";
+    }
+    return self;
+}
 
 @end

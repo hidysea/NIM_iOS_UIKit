@@ -19,7 +19,9 @@
 #import "NTESWhiteboardAttachment.h"
 #import "NTESSessionUtil.h"
 #import "NTESPersonalCardViewController.h"
-
+#import "NTESRobotCardViewController.h"
+#import "NTESRedPacketAttachment.h"
+#import "NTESRedPacketTipAttachment.h"
 #define SessionListTitle @"云信 Demo"
 
 @interface NTESSessionListViewController ()<NIMLoginManagerDelegate,NTESListHeaderDelegate,NIMEventSubscribeManagerDelegate,UIViewControllerPreviewingDelegate>
@@ -72,8 +74,8 @@
     self.navigationItem.titleView  = [self titleView:userID];
 }
 
-- (void)refresh:(BOOL)reload{
-    [super refresh:reload];
+- (void)refresh{
+    [super refresh];
     self.emptyTipLabel.hidden = self.recentSessions.count;
 }
 
@@ -85,8 +87,16 @@
 - (void)onSelectedAvatar:(NIMRecentSession *)recent
              atIndexPath:(NSIndexPath *)indexPath{
     if (recent.session.sessionType == NIMSessionTypeP2P) {
-       NTESPersonalCardViewController *vc = [[NTESPersonalCardViewController alloc] initWithUserId:recent.session.sessionId];
-      [self.navigationController pushViewController:vc animated:YES];
+        UIViewController *vc;
+        if ([[NIMSDK sharedSDK].robotManager isValidRobot:recent.session.sessionId])
+        {
+            vc = [[NTESRobotCardViewController alloc] initWithUserId:recent.session.sessionId];
+        }
+        else
+        {
+            vc = [[NTESPersonalCardViewController alloc] initWithUserId:recent.session.sessionId];
+        }
+        [self.navigationController pushViewController:vc animated:YES];
     }
 }
 
@@ -266,18 +276,33 @@
     {
         NIMCustomObject *object = recent.lastMessage.messageObject;
         NSString *text = @"";
-        if ([object.attachment isKindOfClass:[NTESSnapchatAttachment class]]) {
+        if ([object.attachment isKindOfClass:[NTESSnapchatAttachment class]])
+        {
             text = @"[阅后即焚]";
         }
-        else if ([object.attachment isKindOfClass:[NTESJanKenPonAttachment class]]) {
+        else if ([object.attachment isKindOfClass:[NTESJanKenPonAttachment class]])
+        {
             text = @"[猜拳]";
         }
-        else if ([object.attachment isKindOfClass:[NTESChartletAttachment class]]) {
+        else if ([object.attachment isKindOfClass:[NTESChartletAttachment class]])
+        {
             text = @"[贴图]";
         }
-        else if ([object.attachment isKindOfClass:[NTESWhiteboardAttachment class]]) {
+        else if ([object.attachment isKindOfClass:[NTESWhiteboardAttachment class]])
+        {
             text = @"[白板]";
-        }else{
+        }
+        else if ([object.attachment isKindOfClass:[NTESRedPacketAttachment class]])
+        {
+            text = @"[红包消息]";
+        }
+        else if ([object.attachment isKindOfClass:[NTESRedPacketTipAttachment class]])
+        {
+            NTESRedPacketTipAttachment *attach = (NTESRedPacketTipAttachment *)object.attachment;
+            text = attach.formatedMessage;
+        }
+        else
+        {
             text = @"[未知消息]";
         }
         if (recent.session.sessionType != NIMSessionTypeP2P)

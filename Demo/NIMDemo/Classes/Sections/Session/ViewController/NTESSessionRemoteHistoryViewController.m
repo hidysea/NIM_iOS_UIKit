@@ -41,9 +41,9 @@
 - (void)viewDidLoad{
     [super viewDidLoad];
     //注册 NIMKit 自定义排版配置
-    [[NIMKit sharedKit] registerLayoutConfig:[NTESCellLayoutConfig class]];
+    [[NIMKit sharedKit] registerLayoutConfig:[NTESCellLayoutConfig new]];
 
-    self.navigationItem.leftBarButtonItems = @[];
+    self.navigationItem.leftBarButtonItems  = @[];
     self.navigationItem.rightBarButtonItems = @[];
     [SVProgressHUD show];
 }
@@ -56,6 +56,13 @@
 {
     return @"";
 }
+
+- (BOOL)disableAudioPlayedStatusIcon:(NIMMessage *)message
+{
+    return YES;
+}
+
+- (void)sendMessage:(NIMMessage *)message{};
 
 - (id<NIMSessionConfig>)sessionConfig{
     return self.config;
@@ -110,10 +117,6 @@
 
 - (id<NIMKitMessageProvider>)messageDataProvider{
     return self.provider;
-}
-
-- (BOOL)disableAudioPlayedStatusIcon{
-    return YES;
 }
 
 - (BOOL)disableProximityMonitor{
@@ -177,7 +180,7 @@
     searchOpt.endTime    = message.timestamp;
     searchOpt.currentMessage = message;
     searchOpt.limit      = self.limit;
-    searchOpt.sync       = NO;
+    searchOpt.sync       =  [NTESBundleSetting sharedConfig].enableSyncWhenFetchRemoteMessages;
     [[NIMSDK sharedSDK].conversationManager fetchMessageHistory:self.session option:searchOpt result:^(NSError *error, NSArray *messages) {
         if (handler) {
             handler(error,messages.reverseObjectEnumerator.allObjects);

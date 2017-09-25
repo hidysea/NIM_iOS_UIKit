@@ -50,6 +50,15 @@
 #import "NIMLocationViewController.h"
 #import "NIMKitInfoFetchOption.h"
 #import "NTESSubscribeManager.h"
+#import "NTESTeamMeetingViewController.h"
+#import "NTESTeamMeetingCallerInfo.h"
+#import "NIMInputAtCache.h"
+#import "NTESRobotCardViewController.h"
+#import "NTESRedPacketManager.h"
+#import "NTESSessionRedPacketContentView.h"
+#import "NTESSessionRedPacketTipContentView.h"
+#import "NTESRedPacketAttachment.h"
+#import "NTESRedPacketTipAttachment.h"
 
 @interface NTESSessionViewController ()
 <UIImagePickerControllerDelegate,
@@ -95,7 +104,7 @@ NIMEventSubscribeManagerDelegate>
     if (self.session.sessionType == NIMSessionTypeP2P && !self.disableOnlineState)
     {
         //临时订阅这个人的在线状态
-        [[NTESSubscribeManager sharedInstance] subscribeTempUserOnlineState:self.session.sessionId];
+        [[NTESSubscribeManager sharedManager] subscribeTempUserOnlineState:self.session.sessionId];
         [[NIMSDK sharedSDK].subscribeManager addDelegate:self];
     }
     
@@ -110,10 +119,12 @@ NIMEventSubscribeManagerDelegate>
     if (self.session.sessionType == NIMSessionTypeP2P && !self.disableOnlineState)
     {
         [[NIMSDK sharedSDK].subscribeManager removeDelegate:self];
-        [[NTESSubscribeManager sharedInstance] unsubscribeTempUserOnlineState:self.session.sessionId];
+        [[NTESSubscribeManager sharedManager] unsubscribeTempUserOnlineState:self.session.sessionId];
     }
     [_fpsLabel invalidate];
 }
+
+
 
 - (void)viewDidLayoutSubviews{
     [super viewDidLayoutSubviews];
@@ -217,7 +228,7 @@ NIMEventSubscribeManagerDelegate>
 #pragma mark - 实时语音
 - (void)onTapMediaItemAudioChat:(NIMMediaItem *)item
 {
-    if ([self checkCondition]) {
+    if ([self checkRTSCondition]) {
         //由于音视频聊天里头有音频和视频聊天界面的切换，直接用present的话页面过渡会不太自然，这里还是用push，然后做出present的效果
         NTESAudioChatViewController *vc = [[NTESAudioChatViewController alloc] initWithCallee:self.session.sessionId];
         CATransition *transition = [CATransition animation];
@@ -234,7 +245,7 @@ NIMEventSubscribeManagerDelegate>
 #pragma mark - 视频聊天
 - (void)onTapMediaItemVideoChat:(NIMMediaItem *)item
 {
-    if ([self checkCondition]) {
+    if ([self checkRTSCondition]) {
         //由于音视频聊天里头有音频和视频聊天界面的切换，直接用present的话页面过渡会不太自然，这里还是用push，然后做出present的效果
         NTESVideoChatViewController *vc = [[NTESVideoChatViewController alloc] initWithCallee:self.session.sessionId];
         CATransition *transition = [CATransition animation];
@@ -247,6 +258,34 @@ NIMEventSubscribeManagerDelegate>
         [self.navigationController pushViewController:vc animated:NO];
     }
 }
+
+#pragma mark - 群组会议
+- (void)onTapMediaItemTeamMeeting:(NIMMediaItem *)item
+{
+    if ([self checkRTSCondition])
+    {
+        NIMTeam *team = [[NIMSDK sharedSDK].teamManager teamById:self.session.sessionId];
+        NSString *currentUserID = [[[NIMSDK sharedSDK] loginManager] currentAccount];
+        NIMContactTeamMemberSelectConfig *config = [[NIMContactTeamMemberSelectConfig alloc] init];
+        config.teamId = team.teamId;
+        config.filterIds = @[currentUserID];
+        config.needMutiSelected = YES;
+        config.maxSelectMemberCount = 8;
+        config.showSelectDetail = YES;
+        NIMContactSelectViewController *vc = [[NIMContactSelectViewController alloc] initWithConfig:config];
+        __weak typeof(self) weakSelf = self;
+        vc.finshBlock = ^(NSArray * memeber){
+            NSString *me = [NIMSDK sharedSDK].loginManager.currentAccount;
+            NTESTeamMeetingCallerInfo *info = [[NTESTeamMeetingCallerInfo alloc] init];
+            info.members = [@[me] arrayByAddingObjectsFromArray:memeber];
+            info.teamId = team.teamId;
+            NTESTeamMeetingViewController *vc = [[NTESTeamMeetingViewController alloc] initWithCallerInfo:info];
+            [weakSelf presentViewController:vc animated:NO completion:nil];
+        };;
+        [vc show];
+    }
+}
+
 
 #pragma mark - 文件传输
 - (void)onTapMediaItemFileTrans:(NIMMediaItem *)item
@@ -331,7 +370,7 @@ NIMEventSubscribeManagerDelegate>
 
 
 
-#pragma mark - 提醒消息
+#pragma mark - 提示消息
 - (void)onTapMediaItemTip:(NIMMediaItem *)item
 {
     UIAlertView *alert =[[UIAlertView alloc] initWithTitle:nil message:@"输入提醒" delegate:nil cancelButtonTitle:@"取消" otherButtonTitles:@"确定", nil];
@@ -350,6 +389,13 @@ NIMEventSubscribeManagerDelegate>
         }
     }];
 }
+
+#pragma mark - 红包
+- (void)onTapMediaItemRedPacket:(NIMMediaItem *)item
+{
+    [[NTESRedPacketManager sharedManager] sendRedPacket:self.session];
+}
+
 
 #pragma mark - 录音事件
 - (void)onRecordFailed:(NSError *)error
@@ -392,9 +438,7 @@ NIMEventSubscribeManagerDelegate>
     else if([eventName isEqualToString:NIMKitEventNameTapLabelLink])
     {
         NSString *link = event.data;
-        [self.view makeToast:[NSString stringWithFormat:@"tap link : %@",link]
-                    duration:2
-                    position:CSToastPositionCenter];
+        [self openSafari:link];
         handled = YES;
     }
     else if([eventName isEqualToString:NIMDemoEventNameOpenSnapPicture])
@@ -424,16 +468,34 @@ NIMEventSubscribeManagerDelegate>
         if ([NTESBundleSetting sharedConfig].autoRemoveSnapMessage) {
             [[NIMSDK sharedSDK].conversationManager deleteMessage:message];
             [self uiDeleteMessage:message];
-            
         }else{
             [[NIMSDK sharedSDK].conversationManager updateMessage:message forSession:message.session completion:nil];
             [self uiUpdateMessage:message];
         }
         [[NSFileManager defaultManager] removeItemAtPath:attachment.filepath error:nil];
-        handled = YES;
         self.currentSingleSnapView = nil;
+        handled = YES;
     }
-
+    else if([eventName isEqualToString:NIMKitEventNameTapRobotLink])
+    {
+        NSString *link = event.data;
+        [self openSafari:link];
+        handled = YES;
+    }
+    else if([eventName isEqualToString:NIMDemoEventNameOpenRedPacket])
+    {
+        NIMCustomObject *object = event.messageModel.message.messageObject;
+        NTESRedPacketAttachment *attachment = (NTESRedPacketAttachment *)object.attachment;
+        [[NTESRedPacketManager sharedManager] openRedPacket:attachment.redPacketId from:event.messageModel.message.from session:self.session];
+        handled = YES;
+    }
+    else if([eventName isEqualToString:NTESShowRedPacketDetailEvent])
+    {
+        NIMCustomObject *object = event.messageModel.message.messageObject;
+        NTESRedPacketTipAttachment *attachment = (NTESRedPacketTipAttachment *)object.attachment;
+        [[NTESRedPacketManager sharedManager] showRedPacketDetail:attachment.packetId];
+        handled = YES;
+    }
     if (!handled) {
         NSAssert(0, @"invalid event");
     }
@@ -441,10 +503,42 @@ NIMEventSubscribeManagerDelegate>
 }
 
 - (BOOL)onTapAvatar:(NSString *)userId{
-    UIViewController *vc = [[NTESPersonalCardViewController alloc] initWithUserId:userId];
+    UIViewController *vc = nil;
+    if ([[NIMSDK sharedSDK].robotManager isValidRobot:userId])
+    {
+        vc = [[NTESRobotCardViewController alloc] initWithUserId:userId];
+    }
+    else
+    {
+        vc = [[NTESPersonalCardViewController alloc] initWithUserId:userId];
+    }
+    
     [self.navigationController pushViewController:vc animated:YES];
     return YES;
 }
+
+
+- (BOOL)onLongPressAvatar:(NSString *)userId
+{
+    if (self.session.sessionType == NIMSessionTypeTeam && ![userId isEqualToString:[NIMSDK sharedSDK].loginManager.currentAccount])
+    {
+        NIMKitInfoFetchOption *option = [[NIMKitInfoFetchOption alloc] init];
+        option.session = self.session;
+        option.forbidaAlias = YES;
+        
+        NSString *nick = [[NIMKit sharedKit].provider infoByUser:userId option:option].showName;
+        NSString *text = [NSString stringWithFormat:@"%@%@%@",NIMInputAtStartChar,nick,NIMInputAtEndChar];
+        
+        NIMInputAtItem *item = [[NIMInputAtItem alloc] init];
+        item.uid  = userId;
+        item.name = nick;
+        [self.sessionInputView.atCache addAtItem:item];
+        
+        [self.sessionInputView.toolBar insertText:text];
+    }
+    return YES;
+}
+
 
 
 #pragma mark - Cell Actions
@@ -504,10 +598,29 @@ NIMEventSubscribeManagerDelegate>
    //普通的自定义消息点击事件可以在这里做哦~
 }
 
+- (void)openSafari:(NSString *)link
+{
+    NSURLComponents *components = [[NSURLComponents alloc] initWithString:link];
+    if (components)
+    {
+        if (!components.scheme)
+        {
+            //默认添加 http
+            components.scheme = @"http";
+        }
+        [[UIApplication sharedApplication] openURL:[components URL]];
+    }
+}
+
 
 #pragma mark - 导航按钮
-- (void)onTouchUpInfoBtn:(id)sender{
+- (void)enterPersonInfoCard:(id)sender{
     NTESSessionCardViewController *vc = [[NTESSessionCardViewController alloc] initWithSession:self.session];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)enterRobotInfoCard:(id)sender{
+    NTESRobotCardViewController *vc = [[NTESRobotCardViewController alloc] initWithUserId:self.session.sessionId];
     [self.navigationController pushViewController:vc animated:YES];
 }
 
@@ -531,8 +644,13 @@ NIMEventSubscribeManagerDelegate>
                 __weak UIActionSheet *wSheet;
                 [sheet showInView:self.view completionHandler:^(NSInteger index) {
                     if (index == wSheet.destructiveButtonIndex) {
-                        BOOL removeRecentSession = [NTESBundleSetting sharedConfig].removeSessionWheDeleteMessages;
-                        [[NIMSDK sharedSDK].conversationManager deleteAllmessagesInSession:self.session removeRecentSession:removeRecentSession];
+                        BOOL removeRecentSession = [NTESBundleSetting sharedConfig].removeSessionWhenDeleteMessages;
+                        BOOL removeTable = [NTESBundleSetting sharedConfig].dropTableWhenDeleteMessages;
+                        NIMDeleteMessagesOption *option = [[NIMDeleteMessagesOption alloc] init];
+                        option.removeSession = removeRecentSession;
+                        option.removeTable = removeTable;
+                        [[NIMSDK sharedSDK].conversationManager deleteAllmessagesInSession:self.session
+                                                                                    option:option];
                     }
                 }];
                 break;
@@ -660,8 +778,7 @@ NIMEventSubscribeManagerDelegate>
     }];
 }
 
-
-- (void)forwardMessage:(NIMMessage *)message toSession:(NIMSession *)session
+ - (void)forwardMessage:(NIMMessage *)message toSession:(NIMSession *)session
 {
     NSString *name;
     if (session.sessionType == NIMSessionTypeP2P)
@@ -679,8 +796,17 @@ NIMEventSubscribeManagerDelegate>
     
     __weak typeof(self) weakSelf = self;
     [alert showAlertWithCompletionHandler:^(NSInteger index) {
-        if(index == 1){
-            [[NIMSDK sharedSDK].chatManager forwardMessage:message toSession:session error:nil];
+        if(index == 1)
+        {
+            if (message.messageType == NIMMessageTypeRobot)
+            {
+                NIMMessage *forwardMessage = [NTESSessionMsgConverter msgWithText:message.text];
+                [[NIMSDK sharedSDK].chatManager sendMessage:forwardMessage toSession:session error:nil];
+            }
+            else
+            {
+                [[NIMSDK sharedSDK].chatManager forwardMessage:message toSession:session error:nil];
+            }
             [weakSelf.view makeToast:@"已发送" duration:2.0 position:CSToastPositionCenter];
         }
     }];
@@ -694,18 +820,30 @@ NIMEventSubscribeManagerDelegate>
 }
 
 
-- (BOOL)checkCondition
+- (BOOL)checkRTSCondition
 {
     BOOL result = YES;
     
-    if (![[Reachability reachabilityForInternetConnection] isReachable]) {
+    if (![[Reachability reachabilityForInternetConnection] isReachable])
+    {
         [self.view makeToast:@"请检查网络" duration:2.0 position:CSToastPositionCenter];
         result = NO;
     }
     NSString *currentAccount = [[NIMSDK sharedSDK].loginManager currentAccount];
-    if ([currentAccount isEqualToString:self.session.sessionId]) {
+    if (self.session.sessionType == NIMSessionTypeP2P && [currentAccount isEqualToString:self.session.sessionId])
+    {
         [self.view makeToast:@"不能和自己通话哦" duration:2.0 position:CSToastPositionCenter];
         result = NO;
+    }
+    if (self.session.sessionType == NIMSessionTypeTeam)
+    {
+        NIMTeam *team = [[NIMSDK sharedSDK].teamManager teamById:self.session.sessionId];
+        NSInteger memberNumber = team.memberNumber;
+        if (memberNumber < 2)
+        {
+            [self.view makeToast:@"无法发起，群人数少于2人" duration:2.0 position:CSToastPositionCenter];
+            result = NO;
+        }
     }
     return result;
 }
@@ -743,7 +881,7 @@ NIMEventSubscribeManagerDelegate>
     UIBarButtonItem *enterTeamCardItem = [[UIBarButtonItem alloc] initWithCustomView:enterTeamCard];
     
     UIButton *infoBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [infoBtn addTarget:self action:@selector(onTouchUpInfoBtn:) forControlEvents:UIControlEventTouchUpInside];
+    [infoBtn addTarget:self action:@selector(enterPersonInfoCard:) forControlEvents:UIControlEventTouchUpInside];
     [infoBtn setImage:[UIImage imageNamed:@"icon_session_info_normal"] forState:UIControlStateNormal];
     [infoBtn setImage:[UIImage imageNamed:@"icon_session_info_pressed"] forState:UIControlStateHighlighted];
     [infoBtn sizeToFit];
@@ -757,13 +895,30 @@ NIMEventSubscribeManagerDelegate>
     UIBarButtonItem *historyButtonItem = [[UIBarButtonItem alloc] initWithCustomView:historyBtn];
     
     
+    UIButton *robotInfoBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [robotInfoBtn addTarget:self action:@selector(enterRobotInfoCard:) forControlEvents:UIControlEventTouchUpInside];
+    [robotInfoBtn setImage:[UIImage imageNamed:@"icon_robot_card_normal"] forState:UIControlStateNormal];
+    [robotInfoBtn setImage:[UIImage imageNamed:@"icon_robot_card_pressed"] forState:UIControlStateHighlighted];
+    [robotInfoBtn sizeToFit];
+    UIBarButtonItem *robotInfoButtonItem = [[UIBarButtonItem alloc] initWithCustomView:robotInfoBtn];
+
     
-    if (self.session.sessionType == NIMSessionTypeTeam) {
+    if (self.session.sessionType == NIMSessionTypeTeam)
+    {
         self.navigationItem.rightBarButtonItems  = @[enterTeamCardItem,historyButtonItem];
-    }else if(self.session.sessionType == NIMSessionTypeP2P){
-        if ([self.session.sessionId isEqualToString:[[NIMSDK sharedSDK].loginManager currentAccount]]) {
+    }
+    else if(self.session.sessionType == NIMSessionTypeP2P)
+    {
+        if ([self.session.sessionId isEqualToString:[[NIMSDK sharedSDK].loginManager currentAccount]])
+        {
             self.navigationItem.rightBarButtonItems = @[historyButtonItem];
-        }else{
+        }
+        else if([[NIMSDK sharedSDK].robotManager isValidRobot:self.session.sessionId])
+        {
+            self.navigationItem.rightBarButtonItems = @[historyButtonItem,robotInfoButtonItem];
+        }
+        else
+        {
             self.navigationItem.rightBarButtonItems = @[enterUInfoItem,historyButtonItem];
         }
     }

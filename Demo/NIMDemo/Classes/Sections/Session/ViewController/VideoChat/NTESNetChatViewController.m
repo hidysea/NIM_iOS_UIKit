@@ -10,7 +10,7 @@
 #import "UIAlertView+NTESBlock.h"
 #import "UIView+Toast.h"
 #import "NTESTimerHolder.h"
-#import "NetCallChatInfo.h"
+#import "NTESNetCallChatInfo.h"
 #import "NTESBundleSetting.h"
 #import <AVFoundation/AVFoundation.h>
 #import <AssetsLibrary/ALAssetsLibrary.h>
@@ -20,7 +20,7 @@
 //十秒之后如果还是没有收到对方响应的control字段，则自己发起一个假的control，用来激活铃声并自己先进入房间
 #define DelaySelfStartControlTime 10
 //激活铃声后无人接听的超时时间
-#define NoBodyResponseTimeOut 40
+#define NoBodyResponseTimeOut 45
 
 //周期性检查剩余磁盘空间
 #define DiskCheckTimeInterval 10
@@ -79,7 +79,7 @@ NTES_FORBID_INTERACTIVE_POP
         self.edgesForExtendedLayout = UIRectEdgeAll;
         if (!self.callInfo) {
             [[NIMSDK sharedSDK].mediaManager switchAudioOutputDevice:NIMAudioOutputDeviceSpeaker];
-            _callInfo = [[NetCallChatInfo alloc] init];
+            _callInfo = [[NTESNetCallChatInfo alloc] init];
         }
         _timer = [[NTESTimerHolder alloc] init];
         _diskCheckTimer = [[NTESTimerHolder alloc] init];
@@ -699,7 +699,7 @@ NTES_FORBID_INTERACTIVE_POP
 
     }
     
-    if (error.code == NIMLocalErrorCodeRecordWillStopForLackSpace) {
+    if (error.code == NIMAVLocalErrorCodeRecordWillStopForLackSpace) {
         _recordWillStopForLackSpace = YES;
     }
 }
@@ -882,7 +882,6 @@ NTES_FORBID_INTERACTIVE_POP
 
 - (void)fillUserSetting:(NIMNetCallOption *)option
 {
-    option.videoCrop  = [[NTESBundleSetting sharedConfig] videochatVideoCrop];
     option.autoRotateRemoteVideo = [[NTESBundleSetting sharedConfig] videochatAutoRotateRemoteVideo];
     option.serverRecordAudio     = [[NTESBundleSetting sharedConfig] serverRecordAudio];
     option.serverRecordVideo     = [[NTESBundleSetting sharedConfig] serverRecordVideo];
@@ -892,7 +891,10 @@ NTES_FORBID_INTERACTIVE_POP
     option.autoDeactivateAudioSession = [[NTESBundleSetting sharedConfig] autoDeactivateAudioSession];
     option.audioDenoise = [[NTESBundleSetting sharedConfig] audioDenoise];
     option.voiceDetect = [[NTESBundleSetting sharedConfig] voiceDetect];
+    option.audioHowlingSuppress = [[NTESBundleSetting sharedConfig] audioHowlingSuppress];
     option.preferHDAudio =  [[NTESBundleSetting sharedConfig] preferHDAudio];
+    option.scene = [[NTESBundleSetting sharedConfig] scene];
+    option.webrtcCompatible = [[NTESBundleSetting sharedConfig] webrtcCompatible];
     
     NIMNetCallVideoCaptureParam *param = [[NIMNetCallVideoCaptureParam alloc] init];
     [self fillVideoCaptureSetting:param];
@@ -903,6 +905,7 @@ NTES_FORBID_INTERACTIVE_POP
 - (void)fillVideoCaptureSetting:(NIMNetCallVideoCaptureParam *)param
 {
     param.preferredVideoQuality = [[NTESBundleSetting sharedConfig] preferredVideoQuality];
+    param.videoCrop  = [[NTESBundleSetting sharedConfig] videochatVideoCrop];
     param.startWithBackCamera   = [[NTESBundleSetting sharedConfig] startWithBackCamera];
 
 }

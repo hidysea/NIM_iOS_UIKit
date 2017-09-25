@@ -21,8 +21,14 @@
 }
 
 
-- (BOOL)removeSessionWheDeleteMessages{
+- (BOOL)removeSessionWhenDeleteMessages{
     return [[[NSUserDefaults standardUserDefaults] objectForKey:@"enabled_remove_recent_session"] boolValue];
+}
+
+- (BOOL)dropTableWhenDeleteMessages
+{
+    return [[[NSUserDefaults standardUserDefaults] objectForKey:@"enabled_drop_msg_table"] boolValue];
+    
 }
 
 - (BOOL)localSearchOrderByTimeDesc{
@@ -63,6 +69,17 @@
     return [[[NSUserDefaults standardUserDefaults] objectForKey:@"using_amr"] boolValue];
 }
 
+- (BOOL)enableSyncWhenFetchRemoteMessages
+{
+    return [[[NSUserDefaults standardUserDefaults] objectForKey:@"sync_when_remote_fetch_messages"] boolValue];
+}
+
+- (BOOL)countTeamNotification
+{
+    return [[[NSUserDefaults standardUserDefaults] objectForKey:@"count_team_notification"] boolValue];
+}
+
+
 - (NSArray *)ignoreTeamNotificationTypes
 {
     static NSArray *types = nil;
@@ -99,6 +116,14 @@
 - (BOOL)serverRecordWhiteboardData
 {
     return [[[NSUserDefaults standardUserDefaults] objectForKey:@"server_record_whiteboard_data"] boolValue];
+}
+
+
+- (NSInteger)maximumLogDays
+{
+    id object = [[NSUserDefaults standardUserDefaults] objectForKey:@"maximum_log_days"];
+    NSInteger days = object? [object integerValue]: 7;
+    return days;
 }
 
 
@@ -191,6 +216,19 @@
     
 }
 
+- (BOOL)audioHowlingSuppress
+{
+    id setting = [[NSUserDefaults standardUserDefaults] objectForKey:@"videochat_audio_howling_suppress"];
+    
+    if (setting) {
+        return [setting boolValue];
+    }
+    else {
+        return NO;
+    }
+}
+
+
 - (BOOL)voiceDetect
 {
     id setting = [[NSUserDefaults standardUserDefaults] objectForKey:@"videochat_voice_detect"];
@@ -216,6 +254,36 @@
     }
 }
 
+- (NIMAVChatScene)scene
+{
+    id setting = [[NSUserDefaults standardUserDefaults] objectForKey:@"avchat_scene"];
+    
+    if (setting) {
+        return [setting unsignedIntegerValue];
+    }
+    else {
+        return NIMAVChatSceneDefault;
+    }
+}
+
+- (NSInteger)chatroomRetryCount
+{
+    id count = [[NSUserDefaults standardUserDefaults] objectForKey:@"chatroom_enter_retry_count"];
+    return count == nil ? 3 : [count integerValue];
+}
+    
+- (BOOL)webrtcCompatible
+{
+    id setting = [[NSUserDefaults standardUserDefaults] objectForKey:@"webrtc_compatible"];
+    
+    if (setting) {
+        return [setting boolValue];
+    }
+    else {
+        return NO;
+    }
+}
+
 
 - (NSString *)description
 {
@@ -227,6 +295,7 @@
                 "auto_remove_snap_message %d\n" \
                 "add_friend_need_verify %d\n" \
                 "show app %d\n" \
+                "maximum log days %zd\n" \
                 "using amr %d\n" \
                 "ignore_team_types %@ \n" \
                 "server_record_audio %d\n" \
@@ -243,14 +312,20 @@
                 "videochat_auto_disable_audiosession %zd\n" \
                 "videochat_audio_denoise %zd\n" \
                 "videochat_voice_detect %zd\n" \
-                "videochat_prefer_hd_audio %zd\n" \
+                "videochat_audio_howling_suppress %zd\n" \
+                "videochat_prefer_hd_audio %zd\n"\
+                "avchat_scene %zd\n"\
+                "chatroom_retry_count %zd\n"\
+                "webrtc_compatible %zd\n" \
+                "sync_when_remote_fetch_messages %zd\n"\
                 "\n\n\n",
-                [self removeSessionWheDeleteMessages],
+                [self removeSessionWhenDeleteMessages],
                 [self localSearchOrderByTimeDesc],
                 [self autoRemoveRemoteSession],
                 [self autoRemoveSnapMessage],
                 [self needVerifyForFriend],
                 [self showFps],
+                [self maximumLogDays],
                 [self usingAmr],
                 [self ignoreTeamNotificationTypes],
                 [self serverRecordAudio],
@@ -267,7 +342,12 @@
                 [self autoDeactivateAudioSession],
                 [self audioDenoise],
                 [self voiceDetect],
-                [self preferHDAudio]
+                [self audioHowlingSuppress],
+                [self preferHDAudio],
+                [self scene],
+                [self chatroomRetryCount],
+                [self webrtcCompatible],
+                [self enableSyncWhenFetchRemoteMessages]
             ];
 }
 @end

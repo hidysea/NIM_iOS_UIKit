@@ -266,7 +266,7 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
             }
                 break;
             default:
-                    break;
+                break;
         }
     }
     return [NSString stringWithFormat:@"%@撤回了一条消息",tip];
@@ -278,17 +278,21 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
     if (!message.isReceivedMsg && message.deliveryState == NIMMessageDeliveryStateFailed) {
         return NO;
     }
-    id<NIMMessageObject> messageobject = message.messageObject;
-    if ([messageobject isKindOfClass:[NIMCustomObject class]]
-        && ([[(NIMCustomObject *)messageobject attachment] isKindOfClass:[NTESSnapchatAttachment class]]
-            || [[(NIMCustomObject *)messageobject attachment] isKindOfClass:[NTESWhiteboardAttachment class]])) {
-            return NO;
-        }
-    if ([messageobject isKindOfClass:[NIMNotificationObject class]]) {
+    id<NIMMessageObject> messageObject = message.messageObject;
+    if ([messageObject isKindOfClass:[NIMCustomObject class]])
+    {
+        id<NTESCustomAttachmentInfo> attach = (id<NTESCustomAttachmentInfo>)[(NIMCustomObject *)message.messageObject attachment];
+        return [attach canBeForwarded];
+    }
+    if ([messageObject isKindOfClass:[NIMNotificationObject class]]) {
         return NO;
     }
-    if ([messageobject isKindOfClass:[NIMTipObject class]]) {
+    if ([messageObject isKindOfClass:[NIMTipObject class]]) {
         return NO;
+    }
+    if ([messageObject isKindOfClass:[NIMRobotObject class]]) {
+        NIMRobotObject *robotObject = (NIMRobotObject *)messageObject;
+        return !robotObject.isFromRobot;
     }
     return YES;
 }
@@ -301,14 +305,19 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
     if (!isFromMe || isToMe || isDeliverFailed) {
         return NO;
     }
-    id<NIMMessageObject> messageobject = message.messageObject;
-    if ([messageobject isKindOfClass:[NIMTipObject class]]
-        || [messageobject isKindOfClass:[NIMNotificationObject class]]) {
+    id<NIMMessageObject> messageObject = message.messageObject;
+    if ([messageObject isKindOfClass:[NIMTipObject class]]
+        || [messageObject isKindOfClass:[NIMNotificationObject class]]) {
         return NO;
     }
-    if ([messageobject isKindOfClass:[NIMCustomObject class]]
-        && ([[(NIMCustomObject *)messageobject attachment] isKindOfClass:[NTESWhiteboardAttachment class]])) {
-            return NO;
+    if ([messageObject isKindOfClass:[NIMCustomObject class]])
+    {
+        id<NTESCustomAttachmentInfo> attach = (id<NTESCustomAttachmentInfo>)[(NIMCustomObject *)message.messageObject attachment];
+        return [attach canBeRevoked];
+    }
+    if ([messageObject isKindOfClass:[NIMRobotObject class]]) {
+        NIMRobotObject *robotObject = (NIMRobotObject *)messageObject;
+        return !robotObject.isFromRobot;
     }
     return YES;
 }
@@ -349,7 +358,16 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
 + (NSString *)onlineState:(NSString *)userId detail:(BOOL)detail
 {
     NSString *state = @"";
-    NSDictionary *dict = [[NTESSubscribeManager sharedInstance] eventsForType:NIMSubscribeSystemEventTypeOnline];
+    if (![NTESSubscribeManager sharedManager] || [[NIMSDK sharedSDK].loginManager.currentAccount isEqualToString:userId])
+    {
+        //没有开启订阅服务或是自己  不显示在线状态
+        return state;
+    }
+    if ([[NIMSDK sharedSDK].robotManager isValidRobot:userId]) {
+        return @"在线";
+    }
+    
+    NSDictionary *dict = [[NTESSubscribeManager sharedManager] eventsForType:NIMSubscribeSystemEventTypeOnline];
     NIMSubscribeEvent *event = [dict objectForKey:userId];
     NIMSubscribeOnlineInfo *info = event.subscribeInfo;
     if ([info isKindOfClass:[NIMSubscribeOnlineInfo class]] && info.senderClientTypes.count)
@@ -377,7 +395,7 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
     }
     else
     {
-        state = [userId isEqualToString:[NIMSDK sharedSDK].loginManager.currentAccount]? @"" : @"离线";
+        state = @"离线";
     }
     return state;
 }
@@ -385,7 +403,7 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
 
 + (NIMLoginClientType)resolveShowClientType:(NSArray *)senderClientTypes
 {
-    NSArray *clients = @[@(NIMLoginClientTypePC),@(NIMLoginClientTypeiOS),@(NIMLoginClientTypeAOS),@(NIMLoginClientTypeWeb),@(NIMLoginClientTypeWP)]; //显示优先级
+    NSArray *clients = @[@(NIMLoginClientTypePC),@(NIMLoginClientTypemacOS),@(NIMLoginClientTypeiOS),@(NIMLoginClientTypeAOS),@(NIMLoginClientTypeWeb),@(NIMLoginClientTypeWP)]; //显示优先级
     for (NSNumber *type in clients) {
         NIMLoginClientType client = type.integerValue;
         if ([senderClientTypes containsObject:@(client)]) {
@@ -398,7 +416,8 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
 + (NSString *)resolveOnlineClientName:(NIMLoginClientType )client
 {
     NSDictionary *formats  = @{
-                              @(NIMLoginClientTypePC) : @"电脑",
+                              @(NIMLoginClientTypePC) : @"PC",
+                              @(NIMLoginClientTypemacOS) : @"Mac",
                               @(NIMLoginClientTypeiOS): @"iOS",
                               @(NIMLoginClientTypeAOS): @"Android",
                               @(NIMLoginClientTypeWeb): @"Web",
@@ -421,7 +440,9 @@ static NSString *const NTESRecentSessionAtMark = @"NTESRecentSessionAtMark";
         switch (onlineState) {
             case NTESOnlineStateNormal:
             {
-                if (client == NIMLoginClientTypePC || client == NIMLoginClientTypeWeb)
+                if (client == NIMLoginClientTypePC ||
+                    client == NIMLoginClientTypeWeb ||
+                    client == NIMLoginClientTypemacOS)
                 {
                     //桌面端不显示网络状态，只显示端
                     return [NSString stringWithFormat:@"%@在线",clientName];

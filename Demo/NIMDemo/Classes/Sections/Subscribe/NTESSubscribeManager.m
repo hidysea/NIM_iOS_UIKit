@@ -13,6 +13,8 @@
 
 #define NTESSubscribeExpiry 60 * 60 * 24 * 1 //订阅有效期为 1 天
 
+#define NTESSubscribeEnable [NIMSDK sharedSDK].isUsingDemoAppKey //仅在使用 Demo App 的时候，将订阅能力开启，开发者可以根据自身应用订阅功能开启状态控制此开关。
+
 NSString *const NTESSubscribeNetState = @"net_state";
 
 NSString *const NTESSubscribeOnlineState = @"online_state";
@@ -30,14 +32,21 @@ NSString *const NTESSubscribeOnlineState = @"online_state";
 
 @implementation NTESSubscribeManager
 
-+ (instancetype)sharedInstance
++ (instancetype)sharedManager
 {
-    static NTESSubscribeManager *instance;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        instance = [[NTESSubscribeManager alloc] init];
-    });
-    return instance;
+    if (NTESSubscribeEnable)
+    {
+        static NTESSubscribeManager *instance;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            instance = [[NTESSubscribeManager alloc] init];
+        });
+        return instance;
+    }
+    else
+    {
+        return nil;
+    }
 }
 
 - (instancetype)init
@@ -77,6 +86,13 @@ NSString *const NTESSubscribeOnlineState = @"online_state";
 
 - (void)subscribeTempUserOnlineState:(NSString *)userId
 {
+    BOOL isRobot = [[NIMSDK sharedSDK].robotManager isValidRobot:userId];
+    BOOL isMe    = [[NIMSDK sharedSDK].loginManager.currentAccount isEqualToString:userId];
+    if (isRobot || isMe) {
+        DDLogInfo(@"user can not subscribe temp publisher: %@",userId);
+        //自己或者机器人，则不需要订阅
+        return;
+    }
     NIMSubscribeRequest *request = [self generateRequest];
     request.publishers = @[userId];
     [self.tempSubscribeIds addObject:userId];
@@ -278,7 +294,9 @@ NSString *const NTESSubscribeOnlineState = @"online_state";
     NSMutableSet *ids = [[NSMutableSet alloc] init];
     NSString *me = [NIMSDK sharedSDK].loginManager.currentAccount;
     for (NIMRecentSession *recent in [NIMSDK sharedSDK].conversationManager.allRecentSessions) {
-        if (recent.session.sessionType == NIMSessionTypeP2P && ![recent.session.sessionId isEqualToString:me]) {
+        BOOL isRobot = [[NIMSDK sharedSDK].robotManager isValidRobot:recent.session.sessionId];
+        if (recent.session.sessionType == NIMSessionTypeP2P && !isRobot && ![recent.session.sessionId isEqualToString:me])
+        {
             [ids addObject:recent.session.sessionId];
         }
     }
